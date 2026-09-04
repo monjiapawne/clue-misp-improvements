@@ -20,8 +20,23 @@ _session.headers.update(
 
 
 def misp_request(method: Literal["get", "post"], path: str, timeout: float, **kwargs) -> dict:
-    """"""
+    """Submit a request to MISP.
 
+    Submits an HTTP request to MISP. Creates a requests.Session at module init
+    and reuses for all subsequent requests.
+
+    Args:
+        method: Verb for http request
+        path: URL path, appended to MISP_URL
+        timeout: Request timeout
+        kwargs: Any additional parameters to pass into the request
+
+    Returns:
+        Dictionary from MISP's API response
+
+    Raises:
+
+    """
     try:
         rsp = _session.request(method, f"{MISP_URL}{path}", verify=VERIFY, timeout=timeout, **kwargs)
     except requests.exceptions.Timeout as e:
@@ -31,10 +46,12 @@ def misp_request(method: Literal["get", "post"], path: str, timeout: float, **kw
     except requests.exceptions.RequestException as e:
         raise ClueException(f"Request failed: {e}", cause=e)
 
-    if rsp.status_code == 403:
-        raise AuthenticationException(f"Authentication to MISP server: {MISP_URL} failed")
-    elif rsp.status_code != 200:
-        raise ClueException(f"Error requesting data [{rsp.status_code}]: {rsp.text[:200]}")
+    try:
+        rsp.raise_for_status()
+    except requests.exceptions.HTTPError as e:
+        if rsp.status_code == 403:
+            raise AuthenticationException(f"Authentication to MISP server: {MISP_URL} failed")
+        raise ClueException(f"Error requesting data [{rsp.status_code}]: {rsp.text[:200]}", cause=e)
 
     try:
         return rsp.json()

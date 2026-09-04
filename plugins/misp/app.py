@@ -14,7 +14,6 @@ from typing import Any, cast
 from actions import ReportSighting, report_sighting
 from client import misp_request
 from clue.common.exceptions import (
-    ClueRuntimeError,
     InvalidDataException,
     UnprocessableException,
 )
@@ -235,8 +234,19 @@ def enrich(type_name: str, value: str, params: Params, *_args) -> list[QueryEntr
 
 @plugin.use
 def run_action(action: Action, request: ExecuteRequest, token: str | None) -> ActionResult:
-    """"""
+    """Execute an action for the MISP plugin.
 
+    Supports 'report_sighting' action which reports a sighting to
+    MISP.
+
+    Args:
+        action: The action definition containing action metadata
+        request: The execution request containing selectors and parameters
+        token: Authentication token from the central API
+
+    Returns:
+        ActionResult indicating success/failure and providing submission details
+    """
     if action.id != "report_sighting":
         return ActionResult(outcome="failure", summary=f"invalid action ID: {action.id}")
 
@@ -244,12 +254,9 @@ def run_action(action: Action, request: ExecuteRequest, token: str | None) -> Ac
 
     values = [s.value for s in request.selectors]
 
-    try:
-        report_sighting(values, request)
-    except ClueRuntimeError as e:
-        return ActionResult(outcome="failure", summary=e.message)
+    report_sighting(values, request)
 
-    output = f"Reported sighting{'' if len(values) == 1 else 's'} for {', '.join(values)} as {request.sighting_type}"
+    output = f"Reported sighting{'' if len(values) == 1 else 's'} for {', '.join(values)} as {request.sighting_type}."
 
     return ActionResult(
         outcome="success",
