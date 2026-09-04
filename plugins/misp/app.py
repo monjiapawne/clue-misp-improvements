@@ -9,79 +9,64 @@ MISP plugin enriches attributes, pulling data from attributes and their parent e
 
 import os
 from datetime import datetime, timezone
-from typing import Any, Union
+from typing import Any, cast
 
 import requests
+from actions import ReportSighting, report_sighting
 from clue.common.exceptions import (
     AuthenticationException,
     ClueException,
+    ClueRuntimeError,
     InvalidDataException,
     NotFoundException,
     TimeoutException,
     UnprocessableException,
 )
 from clue.common.logging import get_logger
+from clue.models.actions import Action, ActionResult, ExecuteRequest
 from clue.models.network import Annotation, QueryEntry
 from clue.plugin import CluePlugin
 from clue.plugin.utils import Params
+from consts import (
+    ACTIONS_ENABLED,
+    ALLOW_TAGS,
+    API_URL,
+    CLASSIFICATION,
+    EXCLUDE_DECAYED,
+    MISP_API_KEY,
+    THREAT_LEVEL,
+    TLP_ENUM,
+    TYPE_MAPPING,
+    VERIFY,
+)
 from pydantic_core import Url
 
 logger = get_logger(__file__)
 
-MISP_API_KEY = os.environ.get("MISP_API_KEY", "")
-CLASSIFICATION = os.environ.get("CLASSIFICATION", "TLP:CLEAR")
-API_URL = os.environ.get("API_URL", "https://misp.local")
-EXCLUDE_DECAYED = str(os.environ.get("EXCLUDE_DECAYED", "true")).lower() in ("true", "1")
-
-_verify_raw = os.environ.get("MISP_VERIFY", "true")
-if _verify_raw.lower() in ("true", "1"):
-    VERIFY: Union[str, bool] = True
-elif _verify_raw.lower() in ("false", "0"):
-    VERIFY = False
-else:
-    VERIFY = _verify_raw
-
-TYPE_MAPPING: dict[str, list[str]] = {
-    "ipv4": ["ip-src", "ip-dst"],
-    "ipv6": ["ip-src", "ip-dst"],
-    "mac_address": ["mac-address"],
-    "domain": ["domain"],
-    "url": ["url", "link"],
-    "email_address": ["email-src", "email-dst"],
-    "sha1": ["sha1"],
-    "sha256": ["sha256"],
-    "md5": ["md5"],
-}
-
-TLP_ENUM = {"TLP:CLEAR": 0, "TLP:GREEN": 1, "TLP:AMBER": 2, "TLP:AMBER+STRICT": 3, "TLP:RED": 4}
-
-# Tags in MISP can be noisy, limit to known high impact tags
-# filter tags by "namespace" or "namespace:predicate"
-ALLOW_TAGS = {
-    "ecsirt",
-    "adversary",
-    "malware_classification",
-    "misp-galaxy:threat-actor",
-    "misp-galaxy:malware",
-    "misp-galaxy:tool",
-    "misp-galaxy:ransomware",
-    "misp-galaxy:sector",
-}
-# Allow users to append or override the default list
-if extra := os.environ.get("ALLOW_TAGS_EXTRA"):
-    ALLOW_TAGS = ALLOW_TAGS | {t.strip() for t in extra.split(",")}
-if override := os.environ.get("ALLOW_TAGS"):
-    ALLOW_TAGS = {t.strip() for t in override.split(",")}
-
-# 4 (undefined), defaults to None
-THREAT_LEVEL = {
-    1: 0.75,  # High
-    2: 0.5,  # Medium
-    3: 0.25,  # Low
-}
 
 # Reuse TCP connections across requests, MISP returns 500 if too many connections
 _session = requests.Session()
+_session.headers.update(
+    {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "Authorization": MISP_API_KEY,
+    }
+)
+
+actions = []
+if ACTIONS_ENABLED:
+    actions = [
+        Action[ReportSighting](
+            id="report_sighting",
+            action_icon="bi:eye",
+            name="Report a sighting",
+            summary="Reports this indicator, adding a sighting in MISP",
+            classification=CLASSIFICATION,
+            supported_types=set(TYPE_MAPPING.keys()),
+            accept_multiple=True,
+        )
+    ]
 
 plugin = CluePlugin(
     app_name=os.environ.get("APP_NAME", "misp"),
@@ -90,6 +75,7 @@ plugin = CluePlugin(
     enable_cache=True,
     supported_types=set(TYPE_MAPPING.keys()),
     logger=logger,
+    actions=actions,
 )
 
 
@@ -98,11 +84,6 @@ def _lookup_type(type_name: list[str], value: str, limit: int, timeout: float) -
     if not MISP_API_KEY:
         raise UnprocessableException("No API key is provided. An API key is required")
 
-    headers = {
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-        "Authorization": MISP_API_KEY,
-    }
     payload = {
         "type": type_name,
         "value": value,
@@ -115,7 +96,7 @@ def _lookup_type(type_name: list[str], value: str, limit: int, timeout: float) -
     url = f"{API_URL}/attributes/restSearch"
 
     try:
-        rsp = _session.post(url, json=payload, headers=headers, verify=VERIFY, timeout=timeout)
+        rsp = _session.post(url, json=payload, verify=VERIFY, timeout=timeout)
     except requests.exceptions.Timeout as e:
         raise TimeoutException("MISP failed to respond in time", cause=e)
     except requests.exceptions.ConnectionError as e:
@@ -285,3 +266,23 @@ def enrich(type_name: str, value: str, params: Params, *_args) -> list[QueryEntr
     logger.info(f"Returning {len(entries)} entries for {type_name}={value}")
 
     return entries
+
+@plugin.use
+def run_action(action: Action, request: ExecuteRequest, token: str | None) -> ActionResult:
+    if action.id != "report_sighting":
+        return ActionResult(outcome="failure", summary=f"invalid action ID: {action.id}")
+
+    request = cast(ReportSighting, request)
+
+    values = [s.value for s in request.selectors]
+    logger.info(f"values: {values}")
+
+    try:
+        rsp = report_sighting(_session, values, request)
+        logger.info(f"respone body: {rsp}")
+    except ClueRuntimeError as e:
+        return ActionResult(outcome="failure", summary=e.message)
+
+    return ActionResult(
+        outcome="success", summary="Added sighting", format="markdown", output="Adding sighting to, [attrs count?]"
+    )
