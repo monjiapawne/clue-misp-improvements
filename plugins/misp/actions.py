@@ -9,7 +9,7 @@ from pydantic import Field
 # Sightings are submitted by value, so it would expire every matching attribute.
 # Expiry is a per attribute lifecycle decision, not selector level.
 SightingType = Literal["true positive", "false positive"]
-SIGHTING_TYPE_IDS = {"true positive": "0", "false positive": "1"}
+SIGHTING_TYPE_IDS: dict[SightingType, str] = {"true positive": "0", "false positive": "1"}
 
 
 class ReportSighting(ExecuteRequest):

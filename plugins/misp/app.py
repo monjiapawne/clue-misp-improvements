@@ -13,10 +13,7 @@ from typing import Any, cast
 
 from actions import ReportSighting, report_sighting
 from client import misp_request
-from clue.common.exceptions import (
-    InvalidDataException,
-    UnprocessableException,
-)
+from clue.common.exceptions import ClueException, InvalidDataException, NotFoundException
 from clue.common.logging import get_logger
 from clue.models.actions import Action, ActionResult, ExecuteRequest
 from clue.models.network import Annotation, QueryEntry
@@ -27,7 +24,6 @@ from consts import (
     ALLOW_TAGS,
     CLASSIFICATION,
     EXCLUDE_DECAYED,
-    MISP_API_KEY,
     MISP_URL,
     THREAT_LEVEL,
     TLP_ENUM,
@@ -65,9 +61,6 @@ plugin = CluePlugin(
 
 def _lookup_type(type_name: list[str], value: str, limit: int, timeout: float) -> list[dict[str, Any]]:
     """Lookup the type in MISP"""
-    if not MISP_API_KEY:
-        raise UnprocessableException("No API key is provided. An API key is required")
-
     payload = {
         "type": type_name,
         "value": value,
@@ -79,7 +72,13 @@ def _lookup_type(type_name: list[str], value: str, limit: int, timeout: float) -
     }
 
     data = misp_request("post", "/attributes/restSearch", timeout, json=payload)
+    if not isinstance(data, dict):
+        raise ClueException(f"Unexpected response from MISP: {type(data).__name__}")
+
     attributes = data.get("response", {}).get("Attribute") or []
+    if not attributes:
+        raise NotFoundException("No result found")
+
     return attributes
 
 
@@ -256,7 +255,8 @@ def run_action(action: Action, request: ExecuteRequest, token: str | None) -> Ac
 
     report_sighting(values, request)
 
-    output = f"Reported sighting{'' if len(values) == 1 else 's'} for {', '.join(values)} as {request.sighting_type}."
+    formatted = ", ".join(f"`{v}`" for v in values)  # Prevent markdown from rendering
+    output = f"Reported sighting{'' if len(values) == 1 else 's'} for {formatted} as {request.sighting_type}."
 
     return ActionResult(
         outcome="success",

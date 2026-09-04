@@ -1,11 +1,7 @@
 from typing import Literal
 
 import requests
-from clue.common.exceptions import (
-    AuthenticationException,
-    ClueException,
-    TimeoutException,
-)
+from clue.common.exceptions import AuthenticationException, ClueException, TimeoutException, UnprocessableException
 from consts import MISP_API_KEY, MISP_URL, VERIFY
 
 # Reuse TCP connections across requests, MISP returns 500 if too many connections
@@ -19,7 +15,7 @@ _session.headers.update(
 )
 
 
-def misp_request(method: Literal["get", "post"], path: str, timeout: float, **kwargs) -> dict:
+def misp_request(method: Literal["get", "post"], path: str, timeout: float, **kwargs) -> dict | list:
     """Submit a request to MISP.
 
     Submits an HTTP request to MISP. Creates a requests.Session at module init
@@ -37,6 +33,9 @@ def misp_request(method: Literal["get", "post"], path: str, timeout: float, **kw
     Raises:
 
     """
+    if not MISP_API_KEY:
+        raise UnprocessableException("No API key is provided. An API key is required")
+
     try:
         rsp = _session.request(method, f"{MISP_URL}{path}", verify=VERIFY, timeout=timeout, **kwargs)
     except requests.exceptions.Timeout as e:
