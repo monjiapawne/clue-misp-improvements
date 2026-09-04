@@ -2,9 +2,10 @@ import os
 from typing import Union
 
 ACTIONS_ENABLED = os.environ.get("ACTIONS_ENABLED", "true").lower().strip() == "true"
-MISP_API_KEY = os.environ.get("MISP_API_KEY", "")
 CLASSIFICATION = os.environ.get("CLASSIFICATION", "TLP:CLEAR")
-API_URL = os.environ.get("API_URL", "https://misp.local")
+MISP_API_KEY = os.environ.get("MISP_API_KEY", "")
+MISP_URL = os.environ.get("MISP_URL", "https://misp.local")
+SIGHTING_SOURCE = os.environ.get("SIGHTING_SOURCE", "Clue")
 MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT", 3))
 EXCLUDE_DECAYED = str(os.environ.get("EXCLUDE_DECAYED", "true")).lower() in ("true", "1")
 

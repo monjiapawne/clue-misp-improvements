@@ -11,15 +11,11 @@ import os
 from datetime import datetime, timezone
 from typing import Any, cast
 
-import requests
 from actions import ReportSighting, report_sighting
+from client import misp_request
 from clue.common.exceptions import (
-    AuthenticationException,
-    ClueException,
     ClueRuntimeError,
     InvalidDataException,
-    NotFoundException,
-    TimeoutException,
     UnprocessableException,
 )
 from clue.common.logging import get_logger
@@ -30,29 +26,18 @@ from clue.plugin.utils import Params
 from consts import (
     ACTIONS_ENABLED,
     ALLOW_TAGS,
-    API_URL,
     CLASSIFICATION,
     EXCLUDE_DECAYED,
     MISP_API_KEY,
+    MISP_URL,
     THREAT_LEVEL,
     TLP_ENUM,
     TYPE_MAPPING,
-    VERIFY,
 )
 from pydantic_core import Url
 
 logger = get_logger(__file__)
 
-
-# Reuse TCP connections across requests, MISP returns 500 if too many connections
-_session = requests.Session()
-_session.headers.update(
-    {
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-        "Authorization": MISP_API_KEY,
-    }
-)
 
 actions = []
 if ACTIONS_ENABLED:
@@ -93,29 +78,9 @@ def _lookup_type(type_name: list[str], value: str, limit: int, timeout: float) -
         "excludeDecayed": EXCLUDE_DECAYED,
         "returnFormat": "json",
     }
-    url = f"{API_URL}/attributes/restSearch"
 
-    try:
-        rsp = _session.post(url, json=payload, verify=VERIFY, timeout=timeout)
-    except requests.exceptions.Timeout as e:
-        raise TimeoutException("MISP failed to respond in time", cause=e)
-    except requests.exceptions.ConnectionError as e:
-        raise ClueException(f"Failed to connect to MISP: {e}", cause=e)
-    except requests.exceptions.RequestException as e:
-        raise ClueException(f"Request failed: {e}", cause=e)
-
-    if rsp.status_code == 403:
-        raise AuthenticationException(f"Authentication to MISP server: {API_URL} failed")
-    elif rsp.status_code != 200:
-        raise ClueException(f"Error requesting data [{rsp.status_code}]: {rsp.text[:200]}")
-
-    try:
-        attributes = rsp.json().get("response", {}).get("Attribute") or []
-    except ValueError as e:
-        raise ClueException(f"MISP returned non JSON response: {rsp.text[:200]}", cause=e)
-    if not attributes:
-        raise NotFoundException("No result found")
-
+    data = misp_request("post", "/attributes/restSearch", timeout, json=payload)
+    attributes = data.get("response", {}).get("Attribute") or []
     return attributes
 
 
@@ -243,7 +208,7 @@ def enrich(type_name: str, value: str, params: Params, *_args) -> list[QueryEntr
                     analytic="MISP",
                     analytic_icon="flowbite:messages-outline",
                     type="context",
-                    link=Url(f"{API_URL}/events/view/{attr.get('event_id', '')}"),
+                    link=Url(f"{MISP_URL}/events/view/{attr.get('event_id', '')}"),
                     value=annotation_value,
                     summary=summary,
                     details=details,
@@ -267,22 +232,28 @@ def enrich(type_name: str, value: str, params: Params, *_args) -> list[QueryEntr
 
     return entries
 
+
 @plugin.use
 def run_action(action: Action, request: ExecuteRequest, token: str | None) -> ActionResult:
+    """"""
+
     if action.id != "report_sighting":
         return ActionResult(outcome="failure", summary=f"invalid action ID: {action.id}")
 
     request = cast(ReportSighting, request)
 
     values = [s.value for s in request.selectors]
-    logger.info(f"values: {values}")
 
     try:
-        rsp = report_sighting(_session, values, request)
-        logger.info(f"respone body: {rsp}")
+        report_sighting(values, request)
     except ClueRuntimeError as e:
         return ActionResult(outcome="failure", summary=e.message)
 
+    output = f"Reported sighting{'' if len(values) == 1 else 's'} for {', '.join(values)} as {request.sighting_type}"
+
     return ActionResult(
-        outcome="success", summary="Added sighting", format="markdown", output="Adding sighting to, [attrs count?]"
+        outcome="success",
+        summary="Reported sighting to MISP",
+        format="markdown",
+        output=output,
     )

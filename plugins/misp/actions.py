@@ -1,29 +1,22 @@
-from enum import StrEnum
+from typing import Literal
 
-import requests
+from client import misp_request
 from clue.models.actions import ExecuteRequest
-from consts import API_URL, MAX_TIMEOUT
+from consts import MAX_TIMEOUT, SIGHTING_SOURCE
 from pydantic import Field
 
-
-class SightingType(StrEnum):
-    """Possible types a sighting could be."""
-
-    SIGHTING = "0"
-    FALSE_POSITIVE = "1"
-    EXPIRATION = "1"
+SightingType = Literal["true positive", "false positive", "expiration"]
+SIGHTING_TYPE_IDS = {"true positive": "0", "false positive": "1", "expiration": "2"}
 
 
 class ReportSighting(ExecuteRequest):
     """"""
 
-    sighting_type: SightingType = Field(default=SightingType.SIGHTING, description="Type of sighting to report")
+    sighting_type: SightingType = Field(default="true positive", description="Type of sighting to report")
 
 
-def report_sighting(session: requests.Session, values: list[str], request: ReportSighting):
+def report_sighting(values: list[str], request: ReportSighting):
     """Reports a list of sightings using provided values to MISP"""
-    payload = {"values": values, "type": request.sighting_type}
-    url = f"{API_URL}/sightings/add"
-    rsp = session.post(url, json=payload, timeout=MAX_TIMEOUT)
+    payload = {"values": values, "type": SIGHTING_TYPE_IDS[request.sighting_type], "source": SIGHTING_SOURCE}
 
-    return rsp.text
+    misp_request("post", "/sightings/add", MAX_TIMEOUT, json=payload)
