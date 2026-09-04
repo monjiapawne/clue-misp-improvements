@@ -28,10 +28,13 @@ def misp_request(method: Literal["get", "post"], path: str, timeout: float, **kw
         kwargs: Any additional parameters to pass into the request
 
     Returns:
-        Dictionary from MISP's API response
+        MISP's JSON API response to the request
 
     Raises:
-
+        UnprocessableException: If no API key is configured
+        TimeoutException: If MISP does no respond with timeout
+        AuthenticationException: If MISP rejects the API key
+        ClueException: If the connection fails, MISP returns and error status or the body is not JSON
     """
     if not MISP_API_KEY:
         raise UnprocessableException("No API key is provided. An API key is required")
@@ -49,7 +52,7 @@ def misp_request(method: Literal["get", "post"], path: str, timeout: float, **kw
         rsp.raise_for_status()
     except requests.exceptions.HTTPError as e:
         if rsp.status_code == 403:
-            raise AuthenticationException(f"Authentication to MISP server: {MISP_URL} failed")
+            raise AuthenticationException(f"Authentication to MISP server: {MISP_URL} failed", cause=e)
         raise ClueException(f"Error requesting data [{rsp.status_code}]: {rsp.text[:200]}", cause=e)
 
     try:
