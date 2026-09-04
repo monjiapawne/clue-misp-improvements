@@ -43,10 +43,17 @@ MISP_RESPONSE = {
 
 
 @pytest.fixture()
-def app_module():
+def app():
     from misp import app
 
-    app._lookup_type = lambda *a, **kw: MISP_RESPONSE["Attribute"]
+    return app
+
+
+@pytest.fixture()
+def mock_lookup(app, monkeypatch):
+    from misp import app
+
+    monkeypatch.setattr(app, "_lookup_type", lambda *a, **kw: MISP_RESPONSE["Attribute"])
     return app
 
 
@@ -56,8 +63,8 @@ def override_attr(app_module, overrides):
 
 
 @pytest.fixture()
-def base_params(app_module):
-    return app_module.Params(
+def base_params(mock_lookup):
+    return mock_lookup.Params(
         deadline=0,
         max_timeout=1,
         annotate=True,
@@ -68,13 +75,13 @@ def base_params(app_module):
 
 
 @pytest.fixture()
-def enrich_result(app_module, base_params):
-    return app_module.enrich(TEST_TYPE, TEST_IP, base_params)[0]
+def enrich_result(mock_lookup, base_params):
+    return mock_lookup.enrich(TEST_TYPE, TEST_IP, base_params)[0]
 
 
-def test_enrich_no_annotate(app_module, base_params):
+def test_enrich_no_annotate(mock_lookup, base_params):
     base_params.annotate = False
-    result = app_module.enrich(TEST_TYPE, TEST_IP, base_params)
+    result = mock_lookup.enrich(TEST_TYPE, TEST_IP, base_params)
     assert len(result) == 1
     assert result[0].annotations == []
 
@@ -87,9 +94,9 @@ def test_enrich_classification(enrich_result):
     assert enrich_result.classification == "TLP:GREEN"
 
 
-def test_enrich_raw_data(app_module, base_params):
+def test_enrich_raw_data(mock_lookup, base_params):
     base_params.raw = True
-    result = app_module.enrich(TEST_TYPE, TEST_IP, base_params)[0]
+    result = mock_lookup.enrich(TEST_TYPE, TEST_IP, base_params)[0]
     assert result.raw_data is not None
 
 
@@ -103,9 +110,9 @@ def test_enrich_value(enrich_result):
     assert enrich_result.annotations[0].value == "C2 beacon observed during Cobalt Strike campaign"
 
 
-def test_enrich_freetext_comment_ignored(app_module, base_params):
-    override_attr(app_module, {"comment": "Imported via the Freetext Import Tool"})
-    result = app_module.enrich(TEST_TYPE, TEST_IP, base_params)[0]
+def test_enrich_freetext_comment_ignored(mock_lookup, base_params):
+    override_attr(mock_lookup, {"comment": "Imported via the Freetext Import Tool"})
+    result = mock_lookup.enrich(TEST_TYPE, TEST_IP, base_params)[0]
     assert result.annotations[0].value != "Imported via the Freetext Import Tool"
 
 
@@ -113,9 +120,9 @@ def test_enrich_confidence_sighting(enrich_result):
     assert enrich_result.annotations[0].confidence == 0.9
 
 
-def test_enrich_confidence_no_sighting(app_module, base_params):
-    override_attr(app_module, {"Sighting": []})
-    result = app_module.enrich(TEST_TYPE, TEST_IP, base_params)[0]
+def test_enrich_confidence_no_sighting(mock_lookup, base_params):
+    override_attr(mock_lookup, {"Sighting": []})
+    result = mock_lookup.enrich(TEST_TYPE, TEST_IP, base_params)[0]
     assert result.annotations[0].confidence == 0.5
 
 
@@ -127,9 +134,9 @@ def test_enrich_severity(enrich_result):
     assert enrich_result.annotations[0].severity == 0.75
 
 
-def test_enrich_severity_none(app_module, base_params):
+def test_enrich_severity_none(mock_lookup, base_params):
     override_attr(
-        app_module,
+        mock_lookup,
         {
             "Event": {
                 "date": "2026-06-01",
@@ -137,19 +144,19 @@ def test_enrich_severity_none(app_module, base_params):
             }
         },
     )
-    result = app_module.enrich(TEST_TYPE, TEST_IP, base_params)[0]
+    result = mock_lookup.enrich(TEST_TYPE, TEST_IP, base_params)[0]
     assert result.annotations[0].severity is None
 
 
-def test_enrich_timestamp_no_sightings(app_module, base_params):
-    override_attr(app_module, {"last_seen": None, "timestamp": "1576589519"})
-    result = app_module.enrich(TEST_TYPE, TEST_IP, base_params)[0]
+def test_enrich_timestamp_no_sightings(mock_lookup, base_params):
+    override_attr(mock_lookup, {"last_seen": None, "timestamp": "1576589519"})
+    result = mock_lookup.enrich(TEST_TYPE, TEST_IP, base_params)[0]
     assert result.annotations[0].timestamp == datetime.fromtimestamp(1576589519, tz=timezone.utc)
 
 
-def test_enrich_active_range_in_details(app_module, base_params):
-    override_attr(app_module, {"first_seen": "2026-01-01T00:00:00Z", "last_seen": "2026-06-01T00:00:00Z"})
-    result = app_module.enrich(TEST_TYPE, TEST_IP, base_params)[0]
+def test_enrich_active_range_in_details(mock_lookup, base_params):
+    override_attr(mock_lookup, {"first_seen": "2026-01-01T00:00:00Z", "last_seen": "2026-06-01T00:00:00Z"})
+    result = mock_lookup.enrich(TEST_TYPE, TEST_IP, base_params)[0]
     assert "Active: 2026-01-01 - 2026-06-01" in result.annotations[0].details
 
 
@@ -164,18 +171,14 @@ def test_enrich_active_range_in_details(app_module, base_params):
         ("adversary:infrastructure-type='C2'", "adversary", "infrastructure-type", "C2"),
     ],
 )
-def test__parse_misp_tag(tag_name, exp_ns, exp_pred, exp_val):
-    from misp import app
-
+def test__parse_misp_tag(app, tag_name, exp_ns, exp_pred, exp_val):
     ns, pred, val = app._parse_misp_tag(tag_name)
     assert ns == exp_ns
     assert pred == exp_pred
     assert val == exp_val
 
 
-def test__process_tags(monkeypatch):
-    from misp import app
-
+def test__process_tags(app, monkeypatch):
     monkeypatch.setattr(app, "ALLOW_TAGS", {"misp-galaxy:threat-actor"})
     sample_tags = [
         {"name": "type:OSINT"},
@@ -189,16 +192,12 @@ def test__process_tags(monkeypatch):
     assert labels == {"APT 29", "OSINT"}
 
 
-def test__process_tags_namespace_only():
-    from misp import app
-
+def test__process_tags_namespace_only(app):
     tags, _ = app._process_tags([{"name": 'ecsirt="malware"'}])
     assert tags == {"ecsirt:malware"}
 
 
-def test__process_tags_no_match():
-    from misp import app
-
+def test__process_tags_no_match(app):
     sample_tags = [
         {"name": "tlp:red"},
         {"name": 'osint:lifetime="perpetual"'},
@@ -208,17 +207,13 @@ def test__process_tags_no_match():
     assert labels == set()
 
 
-def test__process_tags_empty():
-    from misp import app
-
+def test__process_tags_empty(app):
     tags, labels = app._process_tags([])
     assert tags == set()
     assert labels == set()
 
 
-def test__highest_tlp():
-    from misp import app
-
+def test__highest_tlp(app):
     assert app._highest_tlp(["TLP:GREEN", "TLP:RED", "TLP:WHITE", "TLP:AMBER"]) == "TLP:RED"
     assert app._highest_tlp(["TLP:AMBER+STRICT", "TLP:AMBER"]) == "TLP:AMBER+STRICT"
     assert app._highest_tlp(["TLP:GREEN"]) == "TLP:GREEN"
