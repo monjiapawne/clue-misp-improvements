@@ -1,5 +1,10 @@
-import pytest
 from datetime import datetime, timezone
+
+import pytest
+import requests
+from clue.common.exceptions import TimeoutException
+
+TEST_PATH = "/attributes/restSearch"
 
 TEST_IP = "198.51.100.42"
 TEST_TYPE = "ipv4"
@@ -219,3 +224,33 @@ def test__highest_tlp(app):
     assert app._highest_tlp(["TLP:GREEN"]) == "TLP:GREEN"
     assert app._highest_tlp(["tlp:green"]) == "TLP:GREEN"
     assert app._highest_tlp([]) is None
+
+
+# Client
+@pytest.fixture()
+def client(monkeypatch):
+    from misp import client
+
+    monkeypatch.setattr(client, "MISP_API_KEY", "test-key")
+    return client
+
+
+@pytest.fixture()
+def fake_request(client, monkeypatch):
+    """Patch over request's session.request with our stub"""
+    def _fake_request(response=None, exception=None):
+        def request(*args, **kwargs):
+            if exception:
+                raise exception
+            return response
+
+        monkeypatch.setattr(client._session, "request", request)
+
+    return _fake_request
+
+
+def test_misp_request_timeout(client, fake_request):
+    fake_request(exception=requests.exceptions.Timeout())
+
+    with pytest.raises(TimeoutException):
+        client.misp_request("post", TEST_PATH, 3)
