@@ -1,8 +1,9 @@
 from datetime import datetime, timezone
 
 import pytest
-import requests
-from clue.common.exceptions import TimeoutException
+
+from clue.common.exceptions import UnprocessableException
+
 
 TEST_PATH = "/attributes/restSearch"
 
@@ -249,8 +250,8 @@ def fake_request(client, monkeypatch):
     return _fake_request
 
 
-def test_misp_request_timeout(client, fake_request):
-    fake_request(exception=requests.exceptions.Timeout())
+def test_misp_request_no_api_key(client, monkeypatch):
+    monkeypatch.setattr(client, "MISP_API_KEY", "")
 
-    with pytest.raises(TimeoutException):
+    with pytest.raises(UnprocessableException):
         client.misp_request("post", TEST_PATH, 3)
