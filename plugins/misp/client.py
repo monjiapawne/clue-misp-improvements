@@ -53,7 +53,12 @@ def misp_request(method: Literal["get", "post"], path: str, timeout: float, **kw
     except requests.exceptions.HTTPError as e:
         if rsp.status_code == 403:
             raise AuthenticationException(f"Authentication to MISP server: {MISP_URL} failed", cause=e)
-        raise ClueException(f"Error requesting data [{rsp.status_code}]: {rsp.text[:200]}", cause=e)
+
+        try:
+            msg = rsp.json().get("message") or rsp.text[:200]
+        except (ValueError, AttributeError):
+            msg = rsp.text[:200]
+        raise ClueException(f"Error requesting data [{rsp.status_code}]: {msg}", cause=e)
 
     try:
         return rsp.json()

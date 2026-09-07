@@ -259,7 +259,7 @@ def run_action(action: Action, request: ExecuteRequest, token: str | None) -> Ac
     plural = "" if len(values) == 1 else "s"
     # Prevent markdown from rendering
     formatted = ", ".join(f"`{v.replace('`', '')}`" for v in values)
-    output = f"Reported sighting{plural} for {formatted} as {sighting_request.sighting_type}."
+    output = f"Reported sighting{plural} for {formatted} as **{sighting_request.sighting_type}**."
 
     return ActionResult(
         outcome="success",
