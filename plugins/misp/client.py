@@ -33,7 +33,7 @@ def misp_request(method: Literal["get", "post"], path: str, timeout: float, **kw
     Raises:
         UnprocessableException: If no API key is configured
         TimeoutException: If MISP does not respond with timeout
-        AuthenticationException: If MISP rejects the API key or the API user is missing permisisons
+        AuthenticationException: If MISP rejects the API key or the API user is missing permissions
         ClueException: If the connection fails, MISP returns an error status or the body is not JSON
     """
     if not MISP_API_KEY:
