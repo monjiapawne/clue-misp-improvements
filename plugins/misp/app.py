@@ -1,4 +1,4 @@
-"""Misp
+"""MISP
 
 Team: Monjiapawne
 
@@ -250,16 +250,16 @@ def run_action(action: Action, request: ExecuteRequest, token: str | None) -> Ac
     if action.id != "report_sighting":
         return ActionResult(outcome="failure", summary=f"invalid action ID: {action.id}")
 
-    request = cast(ReportSighting, request)
+    sighting_request = cast(ReportSighting, request)
 
     values = [s.value for s in request.selectors]
 
-    report_sighting(values, request)
+    report_sighting(values, sighting_request)
 
     plural = "" if len(values) == 1 else "s"
-
-    formatted = ", ".join(f"`{v}`" for v in values)  # Prevent markdown from rendering
-    output = f"Reported sighting{plural} for {formatted} as {request.sighting_type}."
+    # Prevent markdown from rendering
+    formatted = ", ".join(f"`{v.replace('`', '')}`" for v in values)
+    output = f"Reported sighting{plural} for {formatted} as {sighting_request.sighting_type}."
 
     return ActionResult(
         outcome="success",
