@@ -33,7 +33,7 @@ def misp_request(method: Literal["get", "post"], path: str, timeout: float, **kw
     Raises:
         UnprocessableException: If no API key is configured
         TimeoutException: If MISP does not respond with timeout
-        AuthenticationException: If MISP rejects the API key
+        AuthenticationException: If MISP rejects the API key or the API user is missing permisisons
         ClueException: If the connection fails, MISP returns an error status or the body is not JSON
     """
     if not MISP_API_KEY:
@@ -57,7 +57,7 @@ def misp_request(method: Literal["get", "post"], path: str, timeout: float, **kw
             msg = rsp.text[:200]
 
         if rsp.status_code == 403:
-            raise AuthenticationException(f"MISP rejected the request: [{MISP_URL}]: {msg}", cause=e)
+            raise AuthenticationException(f"MISP rejected the request [{MISP_URL}]: {msg}", cause=e)
 
         raise ClueException(f"Error requesting data [{rsp.status_code}]: {msg}", cause=e)
 

@@ -297,3 +297,16 @@ def test_run_action(app, sighting_action, sighting_requests, sighting_type, type
     assert result.format == "markdown"
     assert result.summary == "Reported sighting to MISP"
     assert result.output == f"Reported sighting for `{TEST_IP}` as **{sighting_type}**."
+
+
+def test_run_action_invalid_id(app, sighting_action, sighting_requests):
+    from actions import ReportSighting
+
+    sighting_action.id = "unsupported_action"
+    request = ReportSighting(selectors=[Selector(type=TEST_TYPE, value=TEST_IP)])
+
+    result = app.run_action(sighting_action, request, None)
+
+    assert result.outcome == "failure"
+    assert result.summary == "invalid action ID: unsupported_action"
+    assert sighting_requests == []
