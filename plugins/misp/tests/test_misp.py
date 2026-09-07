@@ -1,9 +1,8 @@
 from datetime import datetime, timezone
 
 import pytest
-
 from clue.common.exceptions import UnprocessableException
-
+from clue.models.selector import Selector
 
 TEST_PATH = "/attributes/restSearch"
 
@@ -57,15 +56,13 @@ def app():
 
 @pytest.fixture()
 def mock_lookup(app, monkeypatch):
-    from misp import app
-
     monkeypatch.setattr(app, "_lookup_type", lambda *a, **kw: MISP_RESPONSE["Attribute"])
     return app
 
 
-def override_attr(app_module, overrides):
+def override_attr(app, overrides):
     """Mock lookup_type with attribute field overrides"""
-    app_module._lookup_type = lambda *a, **kw: [{**MISP_RESPONSE["Attribute"][0], **overrides}]
+    app._lookup_type = lambda *a, **kw: [{**MISP_RESPONSE["Attribute"][0], **overrides}]
 
 
 @pytest.fixture()
@@ -230,24 +227,10 @@ def test__highest_tlp(app):
 # Client
 @pytest.fixture()
 def client(monkeypatch):
-    from misp import client
+    import client
 
     monkeypatch.setattr(client, "MISP_API_KEY", "test-key")
     return client
-
-
-@pytest.fixture()
-def fake_request(client, monkeypatch):
-    """Patch over request's session.request with our stub"""
-    def _fake_request(response=None, exception=None):
-        def request(*args, **kwargs):
-            if exception:
-                raise exception
-            return response
-
-        monkeypatch.setattr(client._session, "request", request)
-
-    return _fake_request
 
 
 def test_misp_request_no_api_key(client, monkeypatch):
@@ -255,3 +238,62 @@ def test_misp_request_no_api_key(client, monkeypatch):
 
     with pytest.raises(UnprocessableException):
         client.misp_request("post", TEST_PATH, 3)
+
+
+# Actions
+@pytest.fixture()
+def sighting_action(app):
+    from actions import ReportSighting
+    from clue.models.actions import Action
+    from consts import CLASSIFICATION, TYPE_MAPPING
+
+    return Action[ReportSighting](
+        id="report_sighting",
+        name="Report a sighting",
+        classification=CLASSIFICATION,
+        supported_types=set(TYPE_MAPPING.keys()),
+    )
+
+
+@pytest.fixture()
+def sighting_requests(monkeypatch):
+    import actions
+
+    calls = []
+
+    def fake_misp_request(method, path, timeout, **kwargs):
+        calls.append({"method": method, "path": path, "timeout": timeout, **kwargs})
+        return {}
+
+    monkeypatch.setattr(actions, "misp_request", fake_misp_request)
+    return calls
+
+
+@pytest.mark.parametrize(
+    ("sighting_type", "type_id"),
+    [
+        ("true positive", "0"),
+        ("false positive", "1"),
+    ],
+)
+def test_run_action(app, sighting_action, sighting_requests, sighting_type, type_id):
+    from actions import ReportSighting
+    from consts import MAX_TIMEOUT, SIGHTING_SOURCE
+
+    request = ReportSighting(selectors=[Selector(type=TEST_TYPE, value=TEST_IP)], sighting_type=sighting_type)
+
+    result = app.run_action(sighting_action, request, None)
+
+    assert sighting_requests == [
+        {
+            "method": "post",
+            "path": "/sightings/add",
+            "timeout": MAX_TIMEOUT,
+            "json": {"values": [TEST_IP], "type": type_id, "source": SIGHTING_SOURCE},
+        },
+    ]
+
+    assert result.outcome == "success"
+    assert result.format == "markdown"
+    assert result.summary == "Reported sighting to MISP"
+    assert result.output == f"Reported sighting for `{TEST_IP}` as {sighting_type}."
