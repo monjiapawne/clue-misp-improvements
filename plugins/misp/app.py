@@ -252,7 +252,7 @@ def run_action(action: Action, request: ExecuteRequest, token: str | None) -> Ac
 
     sighting_request = cast(ReportSighting, request)
 
-    values = [s.value for s in request.selectors]
+    values = [s.value for s in sighting_request.selectors]
 
     report_sighting(values, sighting_request)
 

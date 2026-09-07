@@ -12,4 +12,4 @@ Analysts can also report sightings back to MISP.
 Sightings are submitted by value. MISP records one against every attribute matching that value, so a single report
 can span multiple events.
 
-The API key's role needs the sighting permission.
+The API key's role needs "Sighting Creator" permission.

@@ -296,4 +296,4 @@ def test_run_action(app, sighting_action, sighting_requests, sighting_type, type
     assert result.outcome == "success"
     assert result.format == "markdown"
     assert result.summary == "Reported sighting to MISP"
-    assert result.output == f"Reported sighting for `{TEST_IP}` as {sighting_type}."
+    assert result.output == f"Reported sighting for `{TEST_IP}` as **{sighting_type}**."
