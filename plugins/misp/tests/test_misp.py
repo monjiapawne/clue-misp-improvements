@@ -263,7 +263,7 @@ def sighting_requests(monkeypatch):
 
     def fake_misp_request(method, path, timeout, **kwargs):
         calls.append({"method": method, "path": path, "timeout": timeout, **kwargs})
-        return {}
+        return {"Sighting": {"id": "77"}}
 
     monkeypatch.setattr(actions, "misp_request", fake_misp_request)
     return calls
@@ -310,3 +310,20 @@ def test_run_action_invalid_id(app, sighting_action, sighting_requests):
     assert result.outcome == "failure"
     assert result.summary == "invalid action ID: unsupported_action"
     assert sighting_requests == []
+
+
+def test_run_action_no_match(app, sighting_action, monkeypatch):
+    import actions
+    from actions import ReportSighting
+
+    monkeypatch.setattr(
+        actions,
+        "misp_request",
+        lambda *a, **kw: {"message": "Could not add the Sighting. Reason: No valid attributes found."},
+    )
+    request = ReportSighting(selectors=[Selector(type=TEST_TYPE, value=TEST_IP)])
+
+    result = app.run_action(sighting_action, request, None)
+
+    assert result.outcome == "failure"
+    assert result.summary == "MISP recorded no sightings, no attribute matched."

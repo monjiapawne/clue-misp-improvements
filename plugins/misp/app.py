@@ -254,7 +254,10 @@ def run_action(action: Action, request: ExecuteRequest, token: str | None) -> Ac
 
     values = [s.value for s in sighting_request.selectors]
 
-    report_sighting(values, sighting_request)
+    try:
+        report_sighting(values, sighting_request)
+    except NotFoundException:
+        return ActionResult(outcome="failure", summary="MISP recorded no sightings, no attribute matched.")
 
     plural = "" if len(values) == 1 else "s"
     # Prevent markdown from rendering
