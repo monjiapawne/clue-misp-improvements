@@ -1,21 +1,26 @@
 import os
-from typing import Union
 
-ACTIONS_ENABLED = os.environ.get("ACTIONS_ENABLED", "true").lower().strip() == "true"
+# Use clue's timeout const
+from clue.plugin.utils import MAX_TIMEOUT as MAX_TIMEOUT
+
+
+def _str_to_bool(value: str) -> bool:
+    """Converts a string to a bool."""
+    return value.lower().strip() in ("true", "1")
+
+
+ACTIONS_ENABLED = _str_to_bool(os.environ.get("ACTIONS_ENABLED", "true"))
 CLASSIFICATION = os.environ.get("CLASSIFICATION", "TLP:CLEAR")
 MISP_API_KEY = os.environ.get("MISP_API_KEY", "")
 MISP_URL = os.environ.get("MISP_URL", "https://misp.local")
 SIGHTING_SOURCE = os.environ.get("SIGHTING_SOURCE", "Clue")
-MAX_TIMEOUT = float(os.environ.get("MAX_TIMEOUT", 3))
-EXCLUDE_DECAYED = str(os.environ.get("EXCLUDE_DECAYED", "true")).lower() in ("true", "1")
+EXCLUDE_DECAYED = _str_to_bool(os.environ.get("EXCLUDE_DECAYED", "true"))
 
-_verify_raw = os.environ.get("MISP_VERIFY", "true")
-if _verify_raw.lower() in ("true", "1"):
-    VERIFY: Union[str, bool] = True
-elif _verify_raw.lower() in ("false", "0"):
-    VERIFY = False
+_verify_raw = os.environ.get("MISP_VERIFY", "true").strip()
+if _verify_raw.lower() in ("true", "1", "false", "0"):
+    VERIFY: str | bool = _str_to_bool(_verify_raw)
 else:
-    VERIFY = _verify_raw
+    VERIFY = _verify_raw  # path to a CA bundle
 
 TYPE_MAPPING: dict[str, list[str]] = {
     "ipv4": ["ip-src", "ip-dst"],

@@ -29,4 +29,6 @@ def report_sighting(values: list[str], request: ReportSighting):
     """Reports a list of sightings using provided values to MISP."""
     payload = {"values": values, "type": SIGHTING_TYPE_IDS[request.sighting_type], "source": SIGHTING_SOURCE}
 
+    # MISP's response returns a single sighting, not every attribute it matched, so there's
+    # nothing useful to take from it.
     misp_request("post", "/sightings/add", MAX_TIMEOUT, json=payload)
